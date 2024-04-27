@@ -10,3 +10,8 @@ canvas {
   width: 100vw;
   height: 100vh;
 }
+
+canvas {
+  --c_theme_bg_home: #e70078;
+  background-color: var(--c_theme_bg_home, #1135d0);
+}
