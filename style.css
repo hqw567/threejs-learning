@@ -9,3 +9,7 @@ canvas {
   width: 100vw;
   height: 100vh;
 }
+
+body {
+  background: #1b1b1b;
+}
