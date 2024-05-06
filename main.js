@@ -1,145 +1,112 @@
 import './style.css'
 import * as THREE from 'three'
-import gsap from 'gsap'
-import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
-import { GUI } from 'three/addons/libs/lil-gui.module.min.js'
-import { FontLoader } from 'three/addons/loaders/FontLoader.js'
-import { TextGeometry } from 'three/addons/geometries/TextGeometry.js'
-import { DragControls } from 'three/addons/controls/DragControls.js'
 import { Timer } from 'three/addons/misc/Timer.js'
-import * as CANNON from 'cannon-es'
+import { GUI } from 'three/addons/libs/lil-gui.module.min.js'
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
+import { RGBELoader } from 'three/addons/loaders/RGBELoader.js'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
-const renderer = new THREE.WebGLRenderer({ alpha: true })
-renderer.setSize(window.innerWidth, window.innerHeight)
-renderer.shadowMap.enabled = true
-renderer.shadowMap.type = THREE.PCFSoftShadowMap
-document.body.appendChild(renderer.domElement)
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
-const scene = new THREE.Scene()
+import { GroundedSkybox } from 'three/addons/objects/GroundedSkybox.js'
+import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js'
 
-const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000)
-camera.position.set(3, 4, 5)
-scene.add(camera)
-
-const controls = new OrbitControls(camera, renderer.domElement)
-
-const ambientLight = new THREE.AmbientLight(0xffffff, 0.7)
-scene.add(ambientLight)
-const directionalLight = new THREE.DirectionalLight(0xffffff, 2)
-directionalLight.castShadow = true
-directionalLight.shadow.mapSize.set(1024, 1024)
-directionalLight.shadow.camera.far = 15
-directionalLight.shadow.camera.left = -7
-directionalLight.shadow.camera.top = 7
-directionalLight.shadow.camera.right = 7
-directionalLight.shadow.camera.bottom = -7
-directionalLight.position.set(5, 5, 5)
-scene.add(directionalLight)
-
-const gui = new GUI()
-const parameters = {
-  loopOnce: false,
-  clampWhenFinished: false,
-}
-
-const cubeTextureLoader = new THREE.CubeTextureLoader()
-const Px = '/textures/environmentMaps/0/px.jpg'
-const Nx = '/textures/environmentMaps/0/nx.jpg'
-const Py = '/textures/environmentMaps/0/py.jpg'
-const Ny = '/textures/environmentMaps/0/ny.jpg'
-const Pz = '/textures/environmentMaps/0/pz.jpg'
-const Nz = '/textures/environmentMaps/0/nz.jpg'
-const environmentMapTexture = cubeTextureLoader.load([Px, Nx, Py, Ny, Pz, Nz])
-
-const floor = new THREE.Mesh(
-  new THREE.PlaneGeometry(10, 10),
-  new THREE.MeshStandardMaterial({
-    color: '#777777',
-    metalness: 0.3,
-    roughness: 0.4,
-    envMap: environmentMapTexture,
-    envMapIntensity: 0.5,
-    side: THREE.DoubleSide,
-  }),
-)
-floor.receiveShadow = true
-floor.rotation.x = -Math.PI / 2
-scene.add(floor)
-let mixer
-let animationsMap = {}
-let currentAction
-const gltfLoader = new GLTFLoader()
-gltfLoader.load(
-  'models/Fox/glTF/Fox.gltf',
-  function (gltf) {
-    const scale = 0.01
-    gltf.scene.scale.set(scale, scale, scale)
-    scene.add(gltf.scene)
-
-    // 创建一个AnimationMixer，将gltf.scene传给它
-    mixer = new THREE.AnimationMixer(gltf.scene)
-
-    if (gltf.animations.length > 0) {
-      const folder = gui.addFolder('Animations')
-
-      gltf.animations.forEach((clip, index) => {
-        animationsMap[clip.name] = clip
-        folder.add({ play: () => playAnimation(clip.name) }, 'play').name(`Animation ${index + 1}: ${clip.name}`)
-      })
-      folder.add({ pause: () => pauseAnimation() }, 'pause').name('Pause Animation')
-      folder.add({ resume: () => resumeAnimation() }, 'resume').name('Resume Animation')
-      folder.add(parameters, 'loopOnce').name('Loop Once')
-      folder.add(parameters, 'clampWhenFinished').name('Clamp When Finished')
-    }
-  },
-  function (xhr) {
-    console.log((xhr.loaded / xhr.total) * 100 + '% loaded')
-  },
-  function (error) {
-    console.log('An error happened', error)
-  },
-)
-function playAnimation(name) {
-  if (mixer) {
-    if (currentAction) {
-      currentAction.stop()
-    }
-    const clip = animationsMap[name]
-    currentAction = mixer.clipAction(clip)
-    currentAction.reset()
-
-    if (parameters.loopOnce) {
-      currentAction.setLoop(THREE.LoopOnce)
-      currentAction.clampWhenFinished = parameters.clampWhenFinished
-    } else {
-      currentAction.setLoop(THREE.LoopRepeat)
-    }
-    currentAction.play()
-  }
-}
-
-function pauseAnimation() {
-  if (currentAction) {
-    currentAction.paused = true
-  }
-}
-
-function resumeAnimation() {
-  if (currentAction && currentAction.paused) {
-    currentAction.paused = false
-  }
-}
-
+let scene, camera, renderer, gui, skybox, carModel
 const timer = new Timer()
-const animation = (timestamp) => {
-  requestAnimationFrame(animation)
+const config = {
+  screenWidth: window.innerWidth,
+  screenHeight: window.innerHeight,
+  fov: 40,
+  near: 1,
+  far: 1000,
+  mousemoveX: 0,
+  mousemoveY: 0,
+  height: 15,
+  radius: 100,
+  enabled: true,
+  carColor: {
+    glass: '#ffffff',
+    details: '#ffffff',
+    body: '#000000',
+  },
+}
+const objects = {}
 
-  const elapsed = timer.getElapsed()
-  const delta = timer.getDelta()
-  mixer?.update(delta)
-  timer.update(timestamp)
+const wheels = []
+const rgbeLoader = new RGBELoader()
+const gltfLoader = new GLTFLoader()
+init().then(render)
 
+async function init() {
+  camera = new THREE.PerspectiveCamera(config.fov, config.screenWidth / config.screenHeight, config.near, config.far)
+  camera.position.set(-20, 7, 20)
+  camera.lookAt(0, 4, 0)
+
+  scene = new THREE.Scene()
+
+  renderer = new THREE.WebGLRenderer({ antialias: true })
+  renderer.setSize(config.screenWidth, config.screenHeight)
+  renderer.setPixelRatio(window.devicePixelRatio)
+  renderer.toneMapping = THREE.ACESFilmicToneMapping
+
+  const controls = new OrbitControls(camera, renderer.domElement)
+
+  controls.target.set(0, 2, 0)
+  controls.maxPolarAngle = THREE.MathUtils.degToRad(90)
+  controls.maxDistance = 80
+  controls.minDistance = 20
+  controls.enablePan = false
   controls.update()
+
+  document.body.appendChild(renderer.domElement)
+  window.addEventListener('resize', onWindowResize)
+
+  gui = new GUI()
+
+  const envMap = await rgbeLoader.loadAsync('/textures/blouberg_sunrise_2_1k.hdr')
+  envMap.mapping = THREE.EquirectangularReflectionMapping
+
+  skybox = new GroundedSkybox(envMap, config.height, config.radius)
+  skybox.position.y = config.height - 0.01
+  scene.add(skybox)
+
+  scene.environment = envMap
+  // scene.background = scene.environment
+
+  const dracoLoader = new DRACOLoader()
+  dracoLoader.setDecoderPath('/libs/draco/gltf/')
+
+  gltfLoader.setDRACOLoader(dracoLoader)
+
+  gltfLoader.load('/models/su7/scene.gltf', function (gltf) {
+    carModel = gltf.scene
+    carModel.scale.multiplyScalar(4)
+
+    scene.add(carModel)
+
+    render()
+  })
+
+  animate()
+}
+
+function animate() {
+  requestAnimationFrame(animate)
+
+  timer.update()
+  const delta = timer.getDelta()
+  const elapsed = timer.getElapsed()
+
+  if (carModel) {
+    carModel.rotation.y = Math.PI + elapsed * 0.1
+  }
+
+  render()
+}
+function onWindowResize() {
+  config.screenHeight = window.innerHeight
+  config.screenWidth = window.innerWidth
+  camera.aspect = config.screenWidth / config.screenHeight
+  camera.updateProjectionMatrix()
+  renderer.setSize(config.screenWidth, config.screenHeight)
+}
+function render() {
   renderer.render(scene, camera)
 }
-animation()
