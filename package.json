@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --host",
     "build": "vite build",
     "preview": "vite preview"
   },
@@ -17,6 +17,7 @@
   "dependencies": {
     "cannon-es": "^0.20.0",
     "gsap": "^3.12.5",
+    "howler": "^2.2.4",
     "three": "^0.164.1"
   },
   "packageManager": "pnpm@9.0.6+sha256.0624e30eff866cdeb363b15061bdb7fd9425b17bc1bb42c22f5f4efdea21f6b3"
